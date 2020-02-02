@@ -1,6 +1,6 @@
 # ZDR ![Build status badge](https://github.com//workflows/MakeCode/badge.svg)
 
-zdarm
+NOTHING
 
 ## Use this extension
 
@@ -32,5 +32,6 @@ MIT
 
 ## Supported targets
 
+* for PXT/microbit
 * for PXT/microbit
 (The metadata above is needed for package search.)
