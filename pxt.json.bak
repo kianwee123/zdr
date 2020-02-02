@@ -9,7 +9,7 @@
     },
     "files": [
         "README.md",
-        "ZDR.ts"
+        "ZDR.ts",
     ],"testFiles": [
         "test.ts"
     ],
