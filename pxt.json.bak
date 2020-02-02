@@ -10,6 +10,8 @@
     "files": [
         "README.md",
         "ZDR.ts",
+    ],"testFiles": [
+        "test.ts"
     ],
     "preferredEditor": "blocksprj"
 }
