@@ -1,0 +1,15 @@
+{
+    "name": "zdarmtest",
+    "version":"0.0.1",
+    "description": "driver for zdarm",
+    "license":"MIT",
+    "dependencies": {
+        "core": "*",
+        "radio": "*"
+    },
+    "files": [
+        "README.md",
+        "ZDR.ts",
+    ],
+    "preferredEditor": "blocksprj"
+}
