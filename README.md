@@ -26,6 +26,10 @@ This image may take a few minutes to refresh.
 
 ![A rendered view of the blocks](https://github.com//raw/master/.makecode/blocks.png)
 
+## License
+
+MIT
+
 ## Supported targets
 
 * for PXT/microbit
