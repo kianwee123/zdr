@@ -347,7 +347,7 @@ function sx1278_EntrySend(length :number): number
         return temp_Data;
     }    
 
-    //let sx1276_7_8Data: number[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1];
+    let unload_Data: number[] = [0x55, 0x55, 0x09, 0x14, 0x06, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06];
     let arm_Data:number[] = [0x55, 0x55, 0x08, 0x03, 0x01, 240, 0x00, 0x02,90, 0x00];
     let init_arm_Data:number[] = [0x55, 0x55, 23, 0x03, 0x06, 128, 0x00, 0x01,90, 0x00, 0x02,90, 0x00, 0x03,90, 0x00, 0x04,90, 0x00, 0x05,90, 0x00, 0x06,90, 0x00];
    
@@ -368,11 +368,30 @@ function sx1278_EntrySend(length :number): number
      *unloads arm
      *
     */
-    //% blockId=unloadsArm block="舵机卸力"
+    //% blockId=unloadsArms block="所有舵机卸力"
     //% weight=85
-    export function unloadsArm(): void {
-        pins.digitalWritePin(DigitalPin.P8, 1);
+    export function unloadsArms(): void {   	
+    	  if (!initialized) {
+            initSX1278();
+        }
+        sx1278_Send(unload_Data, unload_Data.length); 
     }
+     /**
+     *
+     * @param steer [1-6] choose steer; eg: 1
+     *
+    */
+    //% blockId=unloadsArm block="舵机卸力 舵机|%steer|"
+    //% weight=85
+    export function unloadsArm(steer:STEER): void {
+        if (!initialized) {
+            initSX1278();
+        }
+        let temp_Data: number[] = [0x55, 0x55, 0x04, 0x14, 0x01,0x01];
+        temp_Data[5] = steer;
+        sx1278_Send(temp_Data, temp_Data.length);       
+    }
+    
     /**
      *
      * @param steer [1-6] choose steer; eg: 1
