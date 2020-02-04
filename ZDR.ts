@@ -90,26 +90,32 @@ let CR  = 0x01
 let CRC = 0x01//CRC使能
     
 let initialized = false
-
-
-    function SPIRead(addr: number): number {
-        let temp;
+    function NSS_Reset(): void {
         pins.digitalWritePin(DigitalPin.P16, 0);
-
+    }
+    function NSS_Set(): void {
+        pins.digitalWritePin(DigitalPin.P16, 1);
+    }
+    
+ function SPIRead(addr: number): number {
+        let temp;
+        //pins.digitalWritePin(DigitalPin.P16, 0);
+        NSS_Reset();
         pins.spiWrite(addr&0x7f);
         temp = pins.spiWrite(0xff);
-        pins.digitalWritePin(DigitalPin.P16, 1);
-
+        //pins.digitalWritePin(DigitalPin.P16, 1);
+        NSS_Set();
         return temp;
     }
 
     function SPIWrite(addr: number, WrPara: number): void {
-        pins.digitalWritePin(DigitalPin.P16, 0);
+        //pins.digitalWritePin(DigitalPin.P16, 0);
+        NSS_Reset();
         pins.spiWrite(addr | 0x80);
         pins.spiWrite(WrPara);
-        pins.digitalWritePin(DigitalPin.P16, 1);
+        //pins.digitalWritePin(DigitalPin.P16, 1);
+        NSS_Set();
     }
-
 
 
   function BurstWrite(addr: number,  ptr: number[], length: number): void {
@@ -120,30 +126,53 @@ let initialized = false
     } 
     else  
     {   
-        pins.digitalWritePin(DigitalPin.P16, 0);
+        //pins.digitalWritePin(DigitalPin.P16, 0);
+        NSS_Reset();
         pins.spiWrite(addr|0x80);
         for (i = 0; i < length; i++)
             pins.spiWrite(ptr[i]);
-        pins.digitalWritePin(DigitalPin.P16, 1);
+        //pins.digitalWritePin(DigitalPin.P16, 1);
+        NSS_Set();
     }
+  }
+  
+  function SPIBurstRead(addr: number, length: number): number[] 
+  {    
+      let i;
+      if (length <= 1)//length must more than one
+      {    
+        let lr: number[] = [0x00];
+        return lr;
+      }else {
+          let ptr: number[] = [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+              , 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+              0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+          //pins.digitalWritePin(DigitalPin.P16, 0);
+          NSS_Reset();
+          pins.spiWrite(addr & 0x7f); 
+          for (i = 0; i < length; i++)
+              ptr[i] = pins.spiWrite(0xff);
+
+          //pins.digitalWritePin(DigitalPin.P16, 1);
+          NSS_Set();
+          
+          return ptr;
+      }
   }
 
     function sx1276_7_8_Standby(): void 
     {
       SPIWrite(LR_RegOpMode,0x09);  //待机//低频模式
-      //SPIWrite(LR_RegOpMode,0x01);//待机//高频模式
     }
     
     function sx1276_7_8_Sleep(): void 
     {
       SPIWrite(LR_RegOpMode,0x08);  //睡眠//低频模式
-      //SPIWrite(LR_RegOpMode,0x00);//睡眠//高频模式
     }
 
     function sx1276_7_8_EntryLoRa(): void 
     {
       SPIWrite(LR_RegOpMode,0x88);  //低频模式
-      //SPIWrite(LR_RegOpMode,0x80);//高频模式
     }
     function sx1276_7_8_LoRaClearIrq(): void 
     {
@@ -213,7 +242,78 @@ let initialized = false
        return pins.digitalReadPin(DigitalPin.P8);
     }
 
+    function sx1276_7_8_ConfigRX(): void
+    {
+        
+        let i;
+        sx1276_7_8_Sleep();//改变当前模式必须进入睡眠模式
+        for (i = 250; i != 0; i--)//延时
+            ;
+        delay_ms(15);
 
+        //扩频模式
+        sx1276_7_8_EntryLoRa();
+
+        BurstWrite(LR_RegFrMsb, sx1276_7_8FreqTbl, 3);//设置频率
+
+        //设置基本参数 
+        SPIWrite(LR_RegPaConfig, sx1276_7_8PowerTbl[Power_Sel]);//设置输出增益  
+
+        SPIWrite(LR_RegOcp, 0x0B);                              //RegOcp,关闭过流保护
+        SPIWrite(LR_RegLna, 0x23);                              //RegLNA,使能低噪声放大器
+
+        if (sx1276_7_8SpreadFactorTbl[Lora_Rate_Sel] == 6)        //扩频因子=6
+        {
+            let tmp;
+            SPIWrite(LR_RegModemConfig1, ((sx1276_7_8LoRaBwTbl[BandWide_Sel] << 4) + (CR << 1) + 0x01));//隐式报头使能 SXCRC使能(0x02) & 纠错编码率 4/5(0x01), 4/6(0x02), 4/7(0x03), 4/8(0x04)
+            SPIWrite(LR_RegModemConfig2, ((sx1276_7_8SpreadFactorTbl[Lora_Rate_Sel] << 4) + (CRC << 2) + 0x03));
+
+            tmp = SPIRead(0x31);
+            tmp &= 0xF8;        //1111 1000
+            tmp |= 0x05;        //0000 1001
+            SPIWrite(0x31, tmp);
+            SPIWrite(0x37, 0x0C);//0000 1100
+        }
+        else {
+            SPIWrite(LR_RegModemConfig1, ((sx1276_7_8LoRaBwTbl[BandWide_Sel] << 4) + (CR << 1) + 0x00));//显示报头 SXCRC使能(0x02) & 纠错编码率 4/5(0x01), 4/6(0x02), 4/7(0x03), 4/8(0x04)
+            SPIWrite(LR_RegModemConfig2, ((sx1276_7_8SpreadFactorTbl[Lora_Rate_Sel] << 4) + (CRC << 2) + 0x03));  //扩频因子 &  LNA gain set by the internal AGC loop 
+        }
+        SPIWrite(LR_RegSymbTimeoutLsb, 0xFF);//RegSymbTimeoutLsb Timeout = 0x3FF(Max) 
+
+        SPIWrite(LR_RegPreambleMsb, 0x00);   //RegPreambleMsb 
+        SPIWrite(LR_RegPreambleLsb, 12);     //RegPreambleLsb 前导码8+4=12字节 
+
+        SPIWrite(REG_LR_DIOMAPPING2, 0x00);  //RegDioMapping2 DIO5=00, DIO4=01
+        //DIO5 clkout DIO4 PLLlock DIO3 Vaildheader
+        //DIO2 Fhsschang DIO1 Fhsschangechannel
+        //DIO0 RxDone
+        sx1276_7_8_Standby();               //进入待机模式   
+    }
+    
+    function sx1276_7_8_LoRaEntryRx(): number
+    {
+        let addr;
+        let temp;
+        sx1276_7_8_ConfigRX();               //基本参数配置
+        SPIWrite(REG_LR_PADAC, 0x84);         //正常的Rx
+        SPIWrite(LR_RegHopPeriod, 0x00);      //RegHopPeriod 无跳频 0xFF
+        SPIWrite(REG_LR_DIOMAPPING1, 0x01);   //DIO0=00, DIO1=00, DIO2=00, DIO3=01   
+        SPIWrite(LR_RegIrqFlagsMask, 0x3F);   //打开RxDone中断&超时0011 1111 
+        SPIWrite(LR_RegPayloadLength, 10);    //RegPayloadLength  21字节(在扩频因子为6时数据大于一字节此寄存器必须配置) 
+        addr = SPIRead(LR_RegFifoRxBaseAddr);//Read RxBaseAddr
+        SPIWrite(LR_RegFifoAddrPtr, addr);    //RxBaseAddr -> FiFoAddrPtr　 
+        SPIWrite(LR_RegOpMode, 0x8d);         //连续Rx模式//低频模式10001101
+        SysTime = 0;
+        while (1) {
+            temp = SPIRead(LR_RegModemStat);
+            if ((temp & 0x04) == 0x04)//Rx-on going RegModemStat//RX进行中
+                return 1;
+            SysTime++;
+            if (SysTime >= 3)
+                return 0;                  //超时错误
+        }
+        return 0;
+    }  
  
 function sx1278_EntrySend(length :number): number 
    {
@@ -364,7 +464,7 @@ function sx1278_EntrySend(length :number): number
         sx1278_Send(init_arm_Data, init_arm_Data.length);      
     
      }
-      /**
+    /**
      *unloads arm
      *
     */
@@ -425,10 +525,54 @@ function sx1278_EntrySend(length :number): number
             initSX1278();
         }
         let _data = create_motor_package(steer,angle,speed);
-        sx1278_Send(_data, _data.length);      
-        
+        sx1278_Send(_data, _data.length);            
     }
 
+    /**
+     *返回角度值，超时返回-3
+     * @param steer [1-6] choose steer; eg: 1
+     *
+    */
+    //% blockId=readAngle block="读舵机角度|%steer|"
+    //% weight=85
+    export function readAngle(steer:STEER): number {
+        if (!initialized) {
+            initSX1278();
+        }
+        let temp_Data: number[] = [0x55, 0x55, 0x04, 0x15, 0x01,0x01];
+        temp_Data[5] = steer;
+        sx1278_Send(temp_Data, temp_Data.length); 
+        
+        sx1276_7_8_LoRaEntryRx();
+        let cnt=0;
+        while (1) {
+            if (Get_NIRQ()) 
+            {
+               let packet_size;
+               let addr = SPIRead(LR_RegFifoRxCurrentaddr);       //接收到最后一个数据包的起始地址（数据缓冲区中）
+               SPIWrite(LR_RegFifoAddrPtr, addr);              //RxBaseAddr -> FiFoAddrPtr    
+               if (sx1276_7_8SpreadFactorTbl[Lora_Rate_Sel] == 6)//当扩频因子为6时，将使用隐式报头模式(不包括内部数据包的长度)
+                  packet_size = 21;
+               else
+                  packet_size = SPIRead(LR_RegRxNbBytes);      //接收的字节数    
+               let RxData = SPIBurstRead(0x00, packet_size);
+               sx1276_7_8_LoRaClearIrq();
+               if (RxData[0] == 0x55 && RxData[1] == 0x55) {
+                  
+                  if (RxData[3] == 0x15) {
+                      return RxData[6];
+                  }
+                }              
+            }
+            delay_ms(1000);
+            cnt++;
+            if(cnt>100)
+            {
+                return -3;
+            }
+        }
+        return -1;
+    }
 }
 
 
