@@ -1,15 +1,15 @@
 
 enum STEER {
 
-    A = 1,
-    B = 2,
-    C = 3,
-    D = 4,
-    E = 5,
-    F = 6
+    P1 = 1,
+    P2 = 2,
+    P3 = 3,
+    P4 = 4,
+    P5 = 5,
+    P6 = 6
 
 }
-//% weight=5 color=#9900CC icon="\uf53b"
+//% weight=5 color=#9900CC icon="\uf021"
 namespace ZDR {
 
  //********************扩频模式寄存器地址定义***************************
@@ -439,23 +439,34 @@ function sx1278_EntrySend(length :number): number
       timeout:减速值：0-255,值越大，速度越慢
     */
     function create_motor_package(id: number,angle: number, timeout: number): number[] {
-        let temp_Data: number[] = [0x55, 0x55, 0x08, 0x03, 0x01, 0, 0, 1, 0, 0];
-        temp_Data[5] = timeout;
-        temp_Data[7] = id;
-        temp_Data[8] = angle & 0xff;
-        temp_Data[9] = (angle>>8)&0xff;
+        let temp_Data: number[] = [0x55, 0xdd, 0x80,0x08, 0x91, 0x01, 0, 0, 1, 0, 0,0];
+        temp_Data[6] = (timeout >> 8) & 0xff;
+        temp_Data[7] = timeout & 0xFF;
+
+        temp_Data[8]  = id;
+        temp_Data[9]  = (angle >> 8) & 0xff ;
+        temp_Data[10] = angle & 0xff;
+        temp_Data[11] = get_crc(temp_Data, 11);
         return temp_Data;
     }    
+    function  get_crc(buffer:number[],len:number):number {
+        let i,crc=0;
+        for(i=0;i<len;i++)
+        {
+            crc+=buffer[i];
+        }
+        return crc;
+    }
 
-    let unload_Data: number[] = [0x55, 0x55, 0x09, 0x14, 0x06, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06];
-    let arm_Data:number[] = [0x55, 0x55, 0x08, 0x03, 0x01, 240, 0x00, 0x02,90, 0x00];
-    let init_arm_Data:number[] = [0x55, 0x55, 23, 0x03, 0x06, 128, 0x00, 0x01,90, 0x00, 0x02,90, 0x00, 0x03,90, 0x00, 0x04,90, 0x00, 0x05,90, 0x00, 0x06,90, 0x00];
+    let unload_Data: number[] = [0x55, 0xdd, 0x80,0x09, 0x95, 0x06, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06,0x6b];
+    let arm_Data: number[] = [0x55, 0xdd, 0x08, 0x03, 0x01, 240, 0x00, 0x02,90, 0x00];
+    let init_arm_Data: number[] = [0x55, 0xdd,0x80, 23, 0x91, 0x06, 0, 128, 0x01,0, 90, 0x02,0, 90, 0x03,0, 90, 0x04,0, 90, 0x05,0, 90, 0x06,0, 90,0x11];
    
     /**
      *init arm
      *
     */
-    //% blockId=initArm block="初始化机械手臂"
+    //% blockId=initArm block="初始化机械臂"
     //% weight=85
      export function initArm(): void {
         if (!initialized) {
@@ -487,8 +498,9 @@ function sx1278_EntrySend(length :number): number
         if (!initialized) {
             initSX1278();
         }
-        let temp_Data: number[] = [0x55, 0x55, 0x04, 0x14, 0x01,0x01];
-        temp_Data[5] = steer;
+        let temp_Data: number[] = [0x55, 0xdd, 0x80,0x04, 0x95, 0x01,0x01];
+        temp_Data[6] = steer;
+        temp_Data[7] = get_crc(temp_Data,7);
         sx1278_Send(temp_Data, temp_Data.length);       
     }
     
@@ -527,7 +539,57 @@ function sx1278_EntrySend(length :number): number
         let _data = create_motor_package(steer,angle,speed);
         sx1278_Send(_data, _data.length);            
     }
+    /**
+       *
+       * 
+       * @param angle1 [0-180]  choose ANGLE; eg: 90
+       * @param angle2 [0-180]  choose ANGLE; eg: 90
+       * @param angle3 [0-180]  choose ANGLE; eg: 90
+       * @param angle4 [0-180]  choose ANGLE; eg: 90
+       * @param angle5 [0-180]  choose ANGLE; eg: 90
+       * @param angle6 [0-180]  choose ANGLE; eg: 90
+       * @param times  [0-255]  choose times; eg: 128 
+      */
+    //% blockId=setAllServoAngles block="速度 %times 舵机 P1 %angle1 P2 %angle2  P3 %angle3  P4 %angle4  P5 %angle5  P6 %angle6 "
+    //% weight=85
+    //% angle1.min=0 angle1.max=180
+    //% angle2.min=0 angle2.max=180
+    //% angle3.min=0 angle3.max=180
+    //% angle4.min=0 angle4.max=180
+    //% angle5.min=0 angle5.max=180
+    //% angle6.min=0 angle6.max=180
+    //% times.min=0 times.max=255
+    //% inlineInputMode=inline
+    export function setAllServoAngles(times: number,angle1: number, angle2: number, angle3: number, angle4: number, angle5: number, angle6: number): void {
+        if (!initialized) {
+            initSX1278();
+        }
+        let temp_Data: number[] = [0x55, 0xdd, 0x80,23, 0x91, 0x06, 0, 0, 1, 0, 0, 0];
+        temp_Data[6] = (times >> 8) & 0xff;
+        temp_Data[7] = times & 0xFF;
+        temp_Data[8] = 1;
+        temp_Data[9] = (angle1 >> 8) & 0xff;
+        temp_Data[10] = angle1 & 0xff;
+        temp_Data[11] = 2;
+        temp_Data[12] = (angle2 >> 8) & 0xff;
+        temp_Data[13] = angle2 & 0xff;
+        temp_Data[14] = 3;
+        temp_Data[15] = (angle3 >> 8) & 0xff;
+        temp_Data[16] = angle3 & 0xff;
+        temp_Data[17] = 4;
+        temp_Data[18] = (angle4 >> 8) & 0xff;
+        temp_Data[19] = angle4 & 0xff;
+        temp_Data[20] = 5;
+        temp_Data[21] = (angle5 >> 8) & 0xff;
+        temp_Data[22] = angle5 & 0xff;
+        temp_Data[23] = 6;
+        temp_Data[24] = (angle6 >> 8) & 0xff;
+        temp_Data[25] = angle6 & 0xff;
+        
+        temp_Data[26] = get_crc(temp_Data, 26);
 
+        sx1278_Send(temp_Data, temp_Data.length);
+    }
     /**
      *返回角度值，超时返回-3
      * @param steer [1-6] choose steer; eg: 1
@@ -539,8 +601,9 @@ function sx1278_EntrySend(length :number): number
         if (!initialized) {
             initSX1278();
         }
-        let temp_Data: number[] = [0x55, 0x55, 0x04, 0x15, 0x01,0x01];
-        temp_Data[5] = steer;
+        let temp_Data: number[] = [0x55, 0xdd,0x00, 0x04, 0x96, 0x01,0x01,0];
+        temp_Data[6] = steer;
+        temp_Data[7] = get_crc(temp_Data, 7);
         sx1278_Send(temp_Data, temp_Data.length); 
         
         sx1276_7_8_LoRaEntryRx();
