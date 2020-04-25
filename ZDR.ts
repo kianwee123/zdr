@@ -66,7 +66,11 @@ const  REG_LR_AGCTHRESH1 =                          0x62
 const  REG_LR_AGCTHRESH2  =                         0x63
 const REG_LR_AGCTHRESH3 = 0x64
     
-let sx1276_7_8FreqTbl:number[] = [0x6C, 0x80, 0x00];//434MHz
+    let sx1276_7_8FreqTbl: number[][] = [
+         [0x6C, 0x80, 0x00],//434MHz
+         [0x6d, 0x00, 0x12],//436MHz
+         [0x6d, 0x80, 0x12],//438MHz
+         [0x6e, 0x00, 0x12]];//440MHz
 let sx1276_7_8PowerTbl: number[] = [
     0xFF,               //20dbm  
     0xFC,               //17dbm
@@ -199,7 +203,7 @@ let initialized = false
         sx1276_7_8_EntryLoRa();  
         //SPIWrite(0x5904);//Change digital regulator form 1.6V to 1.47V: see errata note
         
-        BurstWrite(LR_RegFrMsb,sx1276_7_8FreqTbl,3);//设置频率
+        BurstWrite(LR_RegFrMsb,sx1276_7_8FreqTbl[Freq_Sel],3);//设置频率
     
         //设置基本参数 
         SPIWrite(LR_RegPaConfig,sx1276_7_8PowerTbl[Power_Sel]);//设置输出增益  
@@ -236,7 +240,15 @@ let initialized = false
         sx1276_7_8_Standby();               //进入待机模式
     }
 
-
+    function Get_Key_Chn(): number {
+        let k1 = pins.digitalReadPin(DigitalPin.P1);
+        let k2 = pins.digitalReadPin(DigitalPin.P2);
+        if(k1==0 && k2==0)  {return 0;}  
+        else if(k1 == 1 && k2 == 0) { return 1; } 
+        else if (k1 == 0 && k2 == 1) { return 2; } 
+        else if (k1 == 1 && k2 == 1) { return 3; } 
+        return 0;
+    }
     function Get_NIRQ(): number
     { 
        return pins.digitalReadPin(DigitalPin.P8);
@@ -254,7 +266,7 @@ let initialized = false
         //扩频模式
         sx1276_7_8_EntryLoRa();
 
-        BurstWrite(LR_RegFrMsb, sx1276_7_8FreqTbl, 3);//设置频率
+        BurstWrite(LR_RegFrMsb, sx1276_7_8FreqTbl[Freq_Sel], 3);//设置频率
 
         //设置基本参数 
         SPIWrite(LR_RegPaConfig, sx1276_7_8PowerTbl[Power_Sel]);//设置输出增益  
@@ -299,7 +311,7 @@ let initialized = false
         SPIWrite(LR_RegHopPeriod, 0x00);      //RegHopPeriod 无跳频 0xFF
         SPIWrite(REG_LR_DIOMAPPING1, 0x01);   //DIO0=00, DIO1=00, DIO2=00, DIO3=01   
         SPIWrite(LR_RegIrqFlagsMask, 0x3F);   //打开RxDone中断&超时0011 1111 
-        SPIWrite(LR_RegPayloadLength, 10);    //RegPayloadLength  21字节(在扩频因子为6时数据大于一字节此寄存器必须配置) 
+        SPIWrite(LR_RegPayloadLength, 0xff );    //RegPayloadLength  21字节(在扩频因子为6时数据大于一字节此寄存器必须配置) 
         addr = SPIRead(LR_RegFifoRxBaseAddr);//Read RxBaseAddr
         SPIWrite(LR_RegFifoAddrPtr, addr);    //RxBaseAddr -> FiFoAddrPtr　 
         SPIWrite(LR_RegOpMode, 0x8d);         //连续Rx模式//低频模式10001101
@@ -376,7 +388,7 @@ function sx1278_EntrySend(length :number): number
         sx1276_7_8_EntryLoRa();  
         //SPIWrite(0x5904);//Change digital regulator form 1.6V to 1.47V: see errata note
         
-        BurstWrite(LR_RegFrMsb,sx1276_7_8FreqTbl,3);//设置频率
+        BurstWrite(LR_RegFrMsb, sx1276_7_8FreqTbl[Freq_Sel],3);//设置频率
     
         //设置基本参数 
         SPIWrite(LR_RegPaConfig,sx1276_7_8PowerTbl[Power_Sel]);//设置输出增益  
@@ -423,10 +435,10 @@ function sx1278_EntrySend(length :number): number
         mode          = 0x01;//lora mode
         Freq_Sel      = 0x00;//433M
         Power_Sel     = 0x00;//20dB
-        Lora_Rate_Sel = 0x06;//扩频因子为12
+        Lora_Rate_Sel = 0x05;//扩频因子为12
         BandWide_Sel  = 0x07;//125KHZ
         Fsk_Rate_Sel  = 0x00;//FSK模式下的扩频因子
-        
+        Freq_Sel = Get_Key_Chn();
         sx1276_7_8_Config();//设置频率，增益，扩频因子，纠错编码率4/5，前导码12字节
         //扩频模式初始化      //关闭过流保护，打开低噪声放大器，打开CRC，显式报头，超时，增益自动校正
                             //preambleDetect到DIO映射 DIO0 TxDone
@@ -438,15 +450,16 @@ function sx1278_EntrySend(length :number): number
       angle：角度，范围：0-180
       timeout:减速值：0-255,值越大，速度越慢
     */
-    function create_motor_package(id: number,angle: number, timeout: number): number[] {
-        let temp_Data: number[] = [0x55, 0xdd, 0x80,0x08, 0x91, 0x01, 0, 0, 1, 0, 0,0];
-        temp_Data[6] = (timeout >> 8) & 0xff;
-        temp_Data[7] = timeout & 0xFF;
-
-        temp_Data[8]  = id;
-        temp_Data[9]  = (angle >> 8) & 0xff ;
-        temp_Data[10] = angle & 0xff;
-        temp_Data[11] = get_crc(temp_Data, 11);
+    function create_motor_package(id: number, angle: number, time: number, speed: number): number[] {
+        let temp_Data: number[] = [0x55, 0xdd, 0x80,0x0a, 0x91, 0x01, 0, 0,0,0, 0, 0, 0,0];
+        temp_Data[6] = (time >> 8) & 0xff;
+        temp_Data[7] = time & 0xFF;
+        temp_Data[8] = (speed >> 8) & 0xff;
+        temp_Data[9] = speed & 0xFF;
+        temp_Data[10]  = id;
+        temp_Data[11]  = (angle >> 8) & 0xff ;
+        temp_Data[12] = angle & 0xff;
+        temp_Data[13] = get_crc(temp_Data, 13);
         return temp_Data;
     }    
     function  get_crc(buffer:number[],len:number):number {
@@ -459,8 +472,8 @@ function sx1278_EntrySend(length :number): number
     }
 
     let unload_Data: number[] = [0x55, 0xdd, 0x80,0x09, 0x95, 0x06, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06,0x6b];
-    let arm_Data: number[] = [0x55, 0xdd, 0x08, 0x03, 0x01, 240, 0x00, 0x02,90, 0x00];
-    let init_arm_Data: number[] = [0x55, 0xdd,0x80, 23, 0x91, 0x06, 0, 128, 0x01,0, 90, 0x02,0, 90, 0x03,0, 90, 0x04,0, 90, 0x05,0, 90, 0x06,0, 90,0x11];
+    //let arm_Data: number[] = [0x55, 0xdd, 0x08, 0x03, 0x01, 240, 0x00, 0x02,90, 0x00];
+    let init_arm_Data: number[] = [0x55, 0xdd, 0x80, 25, 0x91, 0x06, 0, 0, 0, 100,0x01,0, 90, 0x02,0, 90, 0x03,0, 90, 0x04,0, 90, 0x05,0, 90, 0x06,0, 90,0xf7];
    
     /**
      *init arm
@@ -516,7 +529,7 @@ function sx1278_EntrySend(length :number): number
         if (!initialized) {
             initSX1278();
         }
-        let _data = create_motor_package(steer,angle,128);
+        let _data = create_motor_package(steer,angle,0,200);
         sx1278_Send(_data, _data.length);      
        
     }
@@ -536,7 +549,7 @@ function sx1278_EntrySend(length :number): number
         {
             initSX1278();
         }
-        let _data = create_motor_package(steer,angle,speed);
+        let _data = create_motor_package(steer,angle,0,speed);
         sx1278_Send(_data, _data.length);            
     }
     /**
@@ -548,9 +561,9 @@ function sx1278_EntrySend(length :number): number
        * @param angle4 [0-180]  choose ANGLE; eg: 90
        * @param angle5 [0-180]  choose ANGLE; eg: 90
        * @param angle6 [0-180]  choose ANGLE; eg: 90
-       * @param times  [0-255]  choose times; eg: 128 
+       * @param speed  [0-255]  choose speed; eg: 128
       */
-    //% blockId=setAllServoAngles block="速度 %times 舵机 P1 %angle1 P2 %angle2  P3 %angle3  P4 %angle4  P5 %angle5  P6 %angle6 "
+    //% blockId=setAllServoAngles block="速度 %speed 舵机 P1 %angle1 P2 %angle2  P3 %angle3  P4 %angle4  P5 %angle5  P6 %angle6 "
     //% weight=85
     //% angle1.min=0 angle1.max=180
     //% angle2.min=0 angle2.max=180
@@ -558,35 +571,45 @@ function sx1278_EntrySend(length :number): number
     //% angle4.min=0 angle4.max=180
     //% angle5.min=0 angle5.max=180
     //% angle6.min=0 angle6.max=180
-    //% times.min=0 times.max=255
+    //% speed.min=0 speed.max=255
     //% inlineInputMode=inline
-    export function setAllServoAngles(times: number,angle1: number, angle2: number, angle3: number, angle4: number, angle5: number, angle6: number): void {
+    export function setAllServoAngles(speed: number,angle1: number, angle2: number, angle3: number, angle4: number, angle5: number, angle6: number): void {
         if (!initialized) {
             initSX1278();
         }
-        let temp_Data: number[] = [0x55, 0xdd, 0x80,23, 0x91, 0x06, 0, 0, 1, 0, 0, 0];
-        temp_Data[6] = (times >> 8) & 0xff;
-        temp_Data[7] = times & 0xFF;
-        temp_Data[8] = 1;
-        temp_Data[9] = (angle1 >> 8) & 0xff;
-        temp_Data[10] = angle1 & 0xff;
-        temp_Data[11] = 2;
-        temp_Data[12] = (angle2 >> 8) & 0xff;
-        temp_Data[13] = angle2 & 0xff;
-        temp_Data[14] = 3;
-        temp_Data[15] = (angle3 >> 8) & 0xff;
-        temp_Data[16] = angle3 & 0xff;
-        temp_Data[17] = 4;
-        temp_Data[18] = (angle4 >> 8) & 0xff;
-        temp_Data[19] = angle4 & 0xff;
-        temp_Data[20] = 5;
-        temp_Data[21] = (angle5 >> 8) & 0xff;
-        temp_Data[22] = angle5 & 0xff;
-        temp_Data[23] = 6;
-        temp_Data[24] = (angle6 >> 8) & 0xff;
-        temp_Data[25] = angle6 & 0xff;
+        let temp_Data: number[]=[0,0,0,0,0,0,0,0,0,0
+                                ,0,0,0,0,0,0,0,0,0,0
+                                ,0,0,0,0,0,0,0,0,0];
+        temp_Data[0] = 0x55;
+        temp_Data[1] = 0xdd;
+        temp_Data[2] = 0x80;
+        temp_Data[3] = 25;
+        temp_Data[4] = 0x91;
+        temp_Data[5] = 0x06;
+        temp_Data[6] = 0;
+        temp_Data[7] = 0;
+        temp_Data[8] = (speed >> 8) & 0xff;
+        temp_Data[9] = speed & 0xFF;
+        temp_Data[10] = 1;
+        temp_Data[11] = (angle1 >> 8) & 0xff;
+        temp_Data[12] = angle1 & 0xff;
+        temp_Data[13] = 2;
+        temp_Data[14] = (angle2 >> 8) & 0xff;
+        temp_Data[15] = angle2 & 0xff;
+        temp_Data[16] = 3;
+        temp_Data[17] = (angle3 >> 8) & 0xff;
+        temp_Data[18] = angle3 & 0xff;
+        temp_Data[19] = 4;
+        temp_Data[20] = (angle4 >> 8) & 0xff;
+        temp_Data[21] = angle4 & 0xff;
+        temp_Data[22] = 5;
+        temp_Data[23] = (angle5 >> 8) & 0xff;
+        temp_Data[24] = angle5 & 0xff;
+        temp_Data[25] = 6;
+        temp_Data[26] = (angle6 >> 8) & 0xff;
+        temp_Data[27] = 0x5a;//angle6 & 0xff;
         
-        temp_Data[26] = get_crc(temp_Data, 26);
+        temp_Data[28] = get_crc(temp_Data, 28);
 
         sx1278_Send(temp_Data, temp_Data.length);
     }
